@@ -21,6 +21,23 @@ No cambia lo que ve un atacante (paramiko sigue en la 4.0.0, y el handshake SSH 
 - Eight dependencies moved to fixed versions after the first `pip-audit`: certifi, cryptography (46.0.6 to 50.0.2), filelock, idna, python-engineio, python-socketio, urllib3, Werkzeug. The tests pass on the new versions; the rebuilt container started without errors.
   Ocho dependencias pasaron a versiones corregidas tras el primer `pip-audit`: certifi, cryptography (de 46.0.6 a 50.0.2), filelock, idna, python-engineio, python-socketio, urllib3, Werkzeug. Los tests pasan con las versiones nuevas; el contenedor reconstruido arrancó sin errores.
 
+## 2026-11-02 (analysis tooling fix, no container change / corrección de la herramienta de análisis, sin cambios en el contenedor)
+
+Does not change what an attacker sees and does not need a redeploy: only `resumen_diario.py` on the host changes.
+No cambia lo que ve un atacante ni requiere volver a desplegar: solo cambia `resumen_diario.py` en el host.
+
+### Fixed / Corregido
+- Ranking of "IPs to look at first": it sorted by number of flags, so dozens of slow visitors (up to 5 flags each) pushed out the IPs that ran commands, which are the more interesting ones. Now what acts on the server weighs more (malware, commands, proxy/AI probes), and the slow visitors come after.
+  Ranking de "IPs a mirar primero": ordenaba por cantidad de banderas, así que decenas de visitantes lentos (hasta 5 banderas cada una) dejaban fuera del top a las IPs que ejecutaron comandos, que son las más interesantes. Ahora lo que actúa sobre el servidor pesa más (malware, comandos, sondeos de proxy o de IA) y los visitantes lentos van después.
+- The line "N more IPs without relevant flags" was wrong: it counted every IP outside `--top`, including flagged ones. It now says how many flagged IPs did not fit in `--top` and, separately, how many have no flags.
+  La línea "N IPs más sin banderas relevantes" era falsa: contaba todas las IPs fuera de `--top`, también las que tenían banderas. Ahora dice cuántas IPs con banderas no entraron en `--top` y, por separado, cuántas no tienen banderas.
+- The command list showed only the 8 most frequent commands, so the repeated shell probes hid the `exec` commands. It now shows up to 8 per channel. 3 new tests (178 in total); the three fail on the previous version.
+  La lista de comandos mostraba solo los 8 más frecuentes, así que las sondas repetidas del shell tapaban los comandos de `exec`. Ahora muestra hasta 8 por canal. 3 tests que fallan con la versión anterior.
+
+### Added / Agregado
+- `--compartidas`: lists username/password pairs tried by two or more different IPs, leaving out the 20 most common passwords. It is the test for the shared-list hypothesis: two IPs trying `123456` means nothing, two IPs from different networks trying the same unusual password suggests a common list. 3 tests (181 in total).
+  `--compartidas`: lista los pares usuario/clave que probaron dos o más IPs distintas, sin contar las 20 claves más comunes. Es la prueba de la hipótesis de la lista compartida: que dos IPs prueben `123456` no dice nada, que dos IPs de redes distintas prueben la misma clave rara sugiere una lista en común. 3 tests (181 en total).
+
 ## 2026-10-30 (analysis tooling fix, no container change / corrección de la herramienta de análisis, sin cambios en el contenedor)
 
 Does not change what an attacker sees and does not need a redeploy: only `resumen_diario.py` on the host changes.

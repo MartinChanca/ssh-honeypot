@@ -182,13 +182,14 @@ python3 resumen_diario.py                  # last 24 hours
 python3 resumen_diario.py --horas 72       # longer window
 python3 resumen_diario.py --ip a3f9c1d2    # full timeline of one IP
 python3 resumen_diario.py --ignorar 172.18.0.1
+python3 resumen_diario.py --compartidas              # unusual credentials tried by several IPs
 ```
 
 I use it for a daily routine: read the report, pick the one or two behaviors that stand out, write a hypothesis, and decide whether it is worth a Wazuh rule or needs more days of data. Each hypothesis is recorded with its evidence, so wrong ones stay visible too. The public log is [HYPOTHESES.md](HYPOTHESES.md) (in Spanish, with no IPs).
 
 - **IPs are masked.** `203.0.113.7` appears as `203.0.x.x#a3f9c1d2`. The suffix is an HMAC-SHA256 of the full address with a secret salt (`RESUMEN_SALT`, or the file `~/.honeypot_resumen_salt`, created on the first run with mode 600 and kept out of git and the container), so the same IP is recognized from one day to the next and nobody without the salt can recover it. A plain hash would not be enough: with the first two octets visible only 65,536 addresses are possible, and trying all of them takes milliseconds. If the salt is lost the suffixes change. `--sin-mascara` shows the IPs whole.
 - **It remembers.** The report separates new IPs from ones seen in the previous 30 days (`--historial-dias`), and lists the recent history of the recurring ones.
-- **Flags are triage, not conclusions.** An IP gets flags such as `recurrente`, `ritmo lento` (several days, at most two attempts per day), `autentico y se fue` or `ejecuto comandos`. They only decide what to read first.
+- **Flags are triage, not conclusions.** An IP gets flags such as `recurrente`, `ritmo lento` (several days, at most two attempts per day), `autentico y se fue` or `ejecuto comandos`. They only decide what to read first. The list puts IPs that run commands, drop malware or probe for proxies/AI APIs before the slow visitors.
 - **Attacker text is untrusted.** Usernames, passwords, commands and URLs are stripped of control characters and shortened, so a hostile string cannot pass as a line of its own in the report.
 - **Probe commands are grouped.** The bots' shell checks change only in a random hash and a few numbers, so they collapse into one line.
 
@@ -603,13 +604,14 @@ python3 resumen_diario.py                  # últimas 24 horas
 python3 resumen_diario.py --horas 72       # ventana más larga
 python3 resumen_diario.py --ip a3f9c1d2    # línea de tiempo completa de una IP
 python3 resumen_diario.py --ignorar 172.18.0.1
+python3 resumen_diario.py --compartidas              # claves raras probadas por varias IPs
 ```
 
 Lo uso en una rutina diaria: leo el informe, elijo uno o dos comportamientos que se destacan, escribo una hipótesis y decido si vale una regla de Wazuh o si hacen falta más días de datos. Cada hipótesis queda registrada con su evidencia, así que las equivocadas también quedan a la vista. El registro público es [HYPOTHESES.md](HYPOTHESES.md) (en español, sin IPs).
 
 - **Las IPs salen enmascaradas.** `203.0.113.7` aparece como `203.0.x.x#a3f9c1d2`. El sufijo es un HMAC-SHA256 de la dirección completa con una sal secreta (`RESUMEN_SALT`, o el archivo `~/.honeypot_resumen_salt`, que se crea en la primera corrida con permisos 600 y queda fuera de git y del contenedor), así la misma IP se reconoce de un día al otro y nadie sin la sal puede recuperarla. Un hash simple no alcanzaría: con los dos primeros octetos a la vista solo hay 65.536 direcciones posibles y probarlas todas toma milisegundos. Si se pierde la sal, los sufijos cambian. `--sin-mascara` muestra las IPs enteras.
 - **Tiene memoria.** El informe separa las IPs nuevas de las vistas en los 30 días anteriores (`--historial-dias`) y lista el historial reciente de las recurrentes.
-- **Las banderas son para decidir qué mirar primero, no son conclusiones.** Una IP puede recibir `recurrente`, `ritmo lento` (varios días, como mucho dos intentos por día), `autentico y se fue` o `ejecuto comandos`.
+- **Las banderas son para decidir qué mirar primero, no son conclusiones.** Una IP puede recibir `recurrente`, `ritmo lento` (varios días, como mucho dos intentos por día), `autentico y se fue` o `ejecuto comandos`. La lista pone primero a las IPs que ejecutan comandos, descargan malware o sondean proxies y APIs de IA, antes que a los visitantes lentos.
 - **El texto del atacante no es de fiar.** Usuarios, contraseñas, comandos y URLs se limpian de caracteres de control y se acortan, para que una cadena hostil no pueda pasar por una línea propia del informe.
 - **Las sondas se agrupan.** Las verificaciones de shell de los bots solo cambian en un hash al azar y unos números, así que se juntan en una sola línea.
 

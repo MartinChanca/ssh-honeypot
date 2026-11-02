@@ -161,6 +161,42 @@ def _pares(eventos):
             for e in eventos if e["honeypot_event"] == "ssh_login_attempt"}
 
 
+def pares_compartidos(eventos, desde, hasta, ignorar=(), minimo_ips=2, excluir_top=20, sin_mascara=False):
+    """Pares (usuario, clave) probados por 2 o mas IPs distintas, sin contar las claves mas comunes.
+
+    Sirve para la hipotesis de la lista compartida: que dos IPs prueben "123456" no dice nada
+    (todo el mundo lo prueba), pero que dos IPs de redes distintas prueben la misma clave rara
+    sugiere una lista en comun. Es evidencia, no prueba: una lista publica tambien la comparte."""
+    ign = set(ignorar)
+    logins = [e for e in eventos if e["honeypot_event"] == "ssh_login_attempt"
+              and desde <= e["_t"] <= hasta and e["ip"] not in ign and _es_publica(e["ip"])]
+    if not logins:
+        return "Sin intentos de login en la ventana."
+    comunes = {p for p, _ in Counter(e.get("password") for e in logins).most_common(excluir_top)}
+    por_par = defaultdict(set)
+    for e in logins:
+        if e.get("password") not in comunes:
+            por_par[(e.get("username"), e.get("password"))].add(e["ip"])
+    comp = sorted(((p, ips) for p, ips in por_par.items() if len(ips) >= minimo_ips),
+                  key=lambda x: -len(x[1]))
+    out = [f"Pares usuario/clave probados por {minimo_ips} o mas IPs distintas "
+           f"(sin las {excluir_top} claves mas comunes de la ventana): {len(comp)}"]
+    for (u, p), ips in comp[:15]:
+        out.append(f"  {limpiar(u, 20)}/{limpiar(p, 25)} <- " + ", ".join(sorted(mascara(i, sin_mascara) for i in ips)))
+    if not comp:
+        out.append("  (ninguno: con las claves comunes afuera, cada IP probo cosas distintas)")
+    return "\n".join(out)
+
+
+# Que mirar primero: lo que hace algo en el servidor pesa mas que una visita lenta. Sin esto, las
+# decenas de IPs de ritmo lento (hasta 5 banderas cada una) dejaban fuera del top a las que ejecutan comandos.
+PESO_BANDERAS = {"descarga de malware": 100, "ejecuto comandos": 10, "http: proxy/API de IA": 5}
+
+
+def _peso(banderas):
+    return sum(PESO_BANDERAS.get(b, 1) for b in banderas)
+
+
 def _banderas(ev_v, ev_p):
     """Banderas de triage para una IP, dado lo de la ventana y lo anterior."""
     todos = ev_v + ev_p
@@ -247,7 +283,7 @@ def resumir(eventos, desde, hasta, historial_dias=30, top=10, sin_mascara=False,
     for ip, ev in v_ip.items():
         b = _banderas(ev, p_ip.get(ip, []))
         filas.append((len(b), len(ev), ip, b))
-    filas.sort(key=lambda f: (-f[0], -f[1]))
+    filas.sort(key=lambda f: (-_peso(f[3]), -f[0], -f[1]))
     llamativas = [f for f in filas if f[0] > 1 or (f[0] == 1 and "primera vez" not in f[3])]
 
     out.append("")
@@ -256,9 +292,12 @@ def resumir(eventos, desde, hasta, historial_dias=30, top=10, sin_mascara=False,
         out.append("  (ninguna con banderas mas alla de ser nueva)")
     for _, n, ip, b in llamativas[:top]:
         out.append(f"  {m(ip)} | {_geo(v_ip[ip] + p_ip.get(ip, []))} | {n} eventos | " + ", ".join(b))
-    resto = len(filas) - min(len(llamativas), top)
-    if resto > 0:
-        out.append(f"  y {resto} IPs mas sin banderas relevantes (escaneo de una sola vez)")
+    fuera_del_top = max(0, len(llamativas) - top)
+    sin_banderas = len(filas) - len(llamativas)
+    if fuera_del_top:
+        out.append(f"  y {fuera_del_top} IPs mas con banderas que no entran en --top {top} (subir --top para verlas)")
+    if sin_banderas:
+        out.append(f"  y {sin_banderas} IPs sin banderas relevantes (escaneo de una sola vez)")
 
     # Credenciales
     ssh = [e for e in ventana if e["honeypot_event"] in ("ssh_login_attempt", "ftp_login_attempt")]
@@ -277,8 +316,13 @@ def resumir(eventos, desde, hasta, historial_dias=30, top=10, sin_mascara=False,
     if cmds:
         out.append("")
         out.append("Comandos (agrupando sondas por hash y numeros al azar):")
-        for (c, canal), n in cmds.most_common(8):
-            out.append(f"  x{n} [{limpiar(canal, 8)}] {limpiar(c, 90)}")
+        # hasta 8 por canal: si no, las sondas de shell (muchas y repetidas) tapan los comandos de exec
+        canales = Counter()
+        for (_, canal), n in cmds.items():
+            canales[canal] += n
+        for canal, _ in canales.most_common():
+            for (c, ca), n in [x for x in cmds.most_common() if x[0][1] == canal][:8]:
+                out.append(f"  x{n} [{limpiar(ca, 8)}] {limpiar(c, 90)}")
 
     # HTTP
     rutas = Counter(limpiar(e.get("path"), 70) for e in ventana if e["honeypot_event"] == "http_request")
@@ -315,12 +359,17 @@ def main(argv=None):
     ap.add_argument("--ip", help="linea de tiempo completa de una IP (el sufijo #hash o la IP)")
     ap.add_argument("--sin-mascara", action="store_true", help="mostrar las IPs completas")
     ap.add_argument("--ignorar", action="append", default=[], help="IP a ignorar (se puede repetir)")
+    ap.add_argument("--compartidas", action="store_true",
+                    help="en vez del resumen, listar pares usuario/clave raros probados por varias IPs")
     a = ap.parse_args(argv)
     fijar_sal(cargar_sal())
 
     hasta = datetime.strptime(a.hasta, FORMATO) if a.hasta else datetime.now()
     desde = hasta - timedelta(hours=a.horas)
     eventos = cargar_eventos(a.logs)
+    if a.compartidas:
+        print(pares_compartidos(eventos, desde, hasta, ignorar=a.ignorar, sin_mascara=a.sin_mascara))
+        return
     print(resumir(eventos, desde, hasta, historial_dias=a.historial_dias, top=a.top,
                   sin_mascara=a.sin_mascara, ignorar=a.ignorar, ver_ip=a.ip))
 

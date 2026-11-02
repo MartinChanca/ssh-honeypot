@@ -180,6 +180,70 @@ def test_comandos_se_agrupan_y_marcan(tmp_path):
     assert "ejecuto comandos" in out
 
 
+def _visitante_lento(i, n_dias=3):
+    """Una IP con ritmo lento, varias credenciales, que se autentica y se va (5 banderas)."""
+    ip = f"8.8.{i}.1"
+    ev = [_ev(_dia(d), "ssh_login_attempt", ip=ip, username="u", password=f"p{d}") for d in range(2, 2 + n_dias)]
+    ev += [_ev(30, "ssh_login_attempt", ip=ip, username="u", password="x"),
+           _ev(29, "ssh_connection", ip=ip, resultado="autenticado_sin_shell", banner="B")]
+    return ev
+
+
+def test_quien_ejecuta_comandos_no_queda_fuera_del_top_por_las_visitas_lentas(tmp_path):
+    ev = []
+    for i in range(20):
+        ev += _visitante_lento(i)
+    ev += [_ev(10, "shell_command", ip="8.8.9.9", canal="shell", command="echo hola")]
+    out = _correr(ev, carpeta=tmp_path, top=3)
+    lista = out.split("IPs a mirar primero:")[1].split("\n\n")[0]
+    assert rd.mascara("8.8.9.9") in lista
+
+
+def test_el_resto_distingue_con_banderas_fuera_del_top_y_sin_banderas(tmp_path):
+    ev = []
+    for i in range(5):
+        ev += _visitante_lento(i)
+    ev += [_ev(10, "ssh_connection", ip="8.8.7.7", resultado="sin_banner")]
+    out = _correr(ev, carpeta=tmp_path, top=2)
+    assert "3 IPs mas con banderas que no entran en --top 2" in out
+    assert "1 IPs sin banderas relevantes" in out
+
+
+def test_los_comandos_de_exec_no_los_tapan_las_sondas_de_shell(tmp_path):
+    ev = [_ev(10 + i, "shell_command", canal="shell", command=f"cmd{i}") for i in range(9)]
+    ev += [_ev(5, "shell_command", ip="8.8.9.9", canal="exec", command="uname -a")]
+    out = _correr(ev, carpeta=tmp_path)
+    assert "[exec] uname -a" in out
+
+
+def _intento(ip, user, pw, minutos=10):
+    return _ev(minutos, "ssh_login_attempt", ip=ip, username=user, password=pw)
+
+
+def _compartidas(ev, **kw):
+    return rd.pares_compartidos([dict(e, _t=datetime.strptime(e["timestamp"], rd.FORMATO)) for e in ev],
+                                AHORA - timedelta(hours=24), AHORA, **kw)
+
+
+def test_pares_compartidos_encuentra_la_clave_rara_y_deja_afuera_las_comunes():
+    ev = [_intento(f"8.8.1.{i}", "root", "123456") for i in range(1, 6)]            # comun: afuera
+    ev += [_intento("8.8.2.1", "admin", "Zr9!rara"), _intento("8.8.2.2", "admin", "Zr9!rara")]
+    out = _compartidas(ev, excluir_top=1)
+    assert "admin/Zr9!rara" in out and "root/123456" not in out
+    assert "8.8.2.1" not in out          # las IPs salen enmascaradas
+
+
+def test_pares_compartidos_sin_coincidencias_lo_dice():
+    ev = [_intento("8.8.3.1", "a", "x1"), _intento("8.8.3.2", "a", "y2"), _intento("8.8.3.3", "b", "z3")]
+    assert "ninguno" in _compartidas(ev, excluir_top=0)
+
+
+def test_main_compartidas_corre(tmp_path, capsys):
+    _escribir(tmp_path, "attempts.json", [_intento("8.8.2.1", "a", "rara1"), _intento("8.8.2.2", "a", "rara1")])
+    rd.main(["--logs", str(tmp_path), "--hasta", AHORA.strftime(rd.FORMATO), "--compartidas"])
+    assert "Pares usuario/clave" in capsys.readouterr().out
+
+
 def test_http_proxy_y_api_ia(tmp_path):
     ev = [_ev(10, "http_request", method="GET", path="http://proxy.example.test/x.php", user_agent="curl/8"),
           _ev(9, "http_request", ip="8.8.8.8", method="GET", path="/v1/models", user_agent="x")]
