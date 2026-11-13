@@ -1,6 +1,6 @@
 # SSH Honeypot
 
-[![CI](https://github.com/TinchoLay/ssh-honeypot/actions/workflows/ci.yml/badge.svg)](https://github.com/TinchoLay/ssh-honeypot/actions/workflows/ci.yml)
+[![CI](https://github.com/MartinChanca/ssh-honeypot/actions/workflows/ci.yml/badge.svg)](https://github.com/MartinChanca/ssh-honeypot/actions/workflows/ci.yml)
 
 **[English](#english) | [Español](#español)**
 
@@ -8,7 +8,7 @@
 
 ## English
 
-A honeypot is a decoy server. It looks real and accepts connections, but there is nothing of value inside. Its only job is to attract attackers and log what they do. This project fakes three services (SSH, HTTP and FTP). It first ran on an Azure VM and now runs in Docker on AWS EC2, exposed to the internet and taking traffic from real attackers. A Wazuh agent ships its logs to a Wazuh manager, where [custom detection rules](https://github.com/TinchoLay/wazuh-detection-pack/tree/main/honeypot) turn them into alerts.
+A honeypot is a decoy server. It looks real and accepts connections, but there is nothing of value inside. Its only job is to attract attackers and log what they do. This project fakes three services (SSH, HTTP and FTP). It first ran on an Azure VM and now runs in Docker on AWS EC2, exposed to the internet and taking traffic from real attackers. A Wazuh agent ships its logs to a Wazuh manager, where [custom detection rules](https://github.com/MartinChanca/wazuh-detection-pack/tree/main/honeypot) turn them into alerts.
 
 This is a learning project. The honeypot only captures traffic aimed at a server I own.
 
@@ -78,7 +78,7 @@ The dashboard listens on `127.0.0.1:5000` only. It is not exposed to the interne
 
 ### Detection with Wazuh
 
-The honeypot writes one JSON line per event and a Wazuh agent on the same machine ships it to a manager. The rules (SSH brute force fast and slow, how each SSH connection ended, commands typed by the attacker, download attempts, VirusTotal hits, GPON exploit paths, open proxy probes, scanner targets, anonymous FTP) live in the [wazuh-detection-pack](https://github.com/TinchoLay/wazuh-detection-pack/tree/main/honeypot) repository, with the tests I ran and what I could not verify.
+The honeypot writes one JSON line per event and a Wazuh agent on the same machine ships it to a manager. The rules (SSH brute force fast and slow, how each SSH connection ended, commands typed by the attacker, download attempts, VirusTotal hits, GPON exploit paths, open proxy probes, scanner targets, anonymous FTP) live in the [wazuh-detection-pack](https://github.com/MartinChanca/wazuh-detection-pack/tree/main/honeypot) repository, with the tests I ran and what I could not verify.
 
 ### Using port 22
 
@@ -285,10 +285,10 @@ The suite covers the fake shell and its interpreter, the login rules and full SS
 
 ### Local setup
 
-Requirements: Python 3.9 or newer and pip.
+Requirements: Python 3.11 or newer (the version used by CI and the Dockerfile) and pip.
 
 ```bash
-git clone https://github.com/TinchoLay/ssh-honeypot.git
+git clone https://github.com/MartinChanca/ssh-honeypot.git
 cd ssh-honeypot
 
 python -m venv venv
@@ -311,7 +311,7 @@ The dashboard runs at `http://localhost:5000`.
 3. Clone the repo, create a `.env` file if you need one and start it:
 
 ```bash
-git clone https://github.com/TinchoLay/ssh-honeypot.git
+git clone https://github.com/MartinChanca/ssh-honeypot.git
 cd ssh-honeypot
 docker compose up -d --build
 ```
@@ -424,13 +424,13 @@ This project exists to learn cybersecurity. The honeypot only captures data from
 
 Martín, IT support and cybersecurity, working toward a SOC L1 role.
 
-[GitHub](https://github.com/TinchoLay) · [LinkedIn](https://www.linkedin.com/in/martin-chancalay-902b543a8)
+[GitHub](https://github.com/MartinChanca) · [LinkedIn](https://www.linkedin.com/in/martin-chancalay-902b543a8)
 
 ---
 
 ## Español
 
-Un honeypot es un servidor señuelo. Parece real y acepta conexiones, pero no tiene nada de valor adentro. Su único trabajo es atraer atacantes y registrar lo que hacen. Este proyecto simula tres servicios (SSH, HTTP y FTP). Primero corrió en una VM de Azure y ahora corre en Docker sobre AWS EC2, expuesto a internet y recibiendo tráfico de atacantes reales. Un agente de Wazuh manda sus logs a un manager de Wazuh, donde unas [reglas de detección propias](https://github.com/TinchoLay/wazuh-detection-pack/tree/main/honeypot) los convierten en alertas.
+Un honeypot es un servidor señuelo. Parece real y acepta conexiones, pero no tiene nada de valor adentro. Su único trabajo es atraer atacantes y registrar lo que hacen. Este proyecto simula tres servicios (SSH, HTTP y FTP). Primero corrió en una VM de Azure y ahora corre en Docker sobre AWS EC2, expuesto a internet y recibiendo tráfico de atacantes reales. Un agente de Wazuh manda sus logs a un manager de Wazuh, donde unas [reglas de detección propias](https://github.com/MartinChanca/wazuh-detection-pack/tree/main/honeypot) los convierten en alertas.
 
 Es un proyecto para aprender. El honeypot solo captura tráfico dirigido a un servidor que es mío.
 
@@ -500,7 +500,7 @@ El dashboard escucha solo en `127.0.0.1:5000`. No está expuesto a internet, as�
 
 ### Detección con Wazuh
 
-El honeypot escribe una línea JSON por evento y un agente de Wazuh en la misma máquina la manda a un manager. Las reglas (fuerza bruta SSH rápida y lenta, cómo terminó cada conexión SSH, comandos que escribe el atacante, intentos de descarga, hallazgos de VirusTotal, rutas de exploit de GPON, pruebas de proxy abierto, objetivos de scanners, FTP anónimo) están en el repositorio [wazuh-detection-pack](https://github.com/TinchoLay/wazuh-detection-pack/tree/main/honeypot), con las pruebas que hice y lo que no pude verificar.
+El honeypot escribe una línea JSON por evento y un agente de Wazuh en la misma máquina la manda a un manager. Las reglas (fuerza bruta SSH rápida y lenta, cómo terminó cada conexión SSH, comandos que escribe el atacante, intentos de descarga, hallazgos de VirusTotal, rutas de exploit de GPON, pruebas de proxy abierto, objetivos de scanners, FTP anónimo) están en el repositorio [wazuh-detection-pack](https://github.com/MartinChanca/wazuh-detection-pack/tree/main/honeypot), con las pruebas que hice y lo que no pude verificar.
 
 ### Usar el puerto 22
 
@@ -707,10 +707,10 @@ La suite cubre la shell falsa y su intérprete, las reglas de login y sesiones S
 
 ### Instalación local
 
-Requisitos: Python 3.9 o superior y pip.
+Requisitos: Python 3.11 o superior (la versión que usan el CI y el Dockerfile) y pip.
 
 ```bash
-git clone https://github.com/TinchoLay/ssh-honeypot.git
+git clone https://github.com/MartinChanca/ssh-honeypot.git
 cd ssh-honeypot
 
 python -m venv venv
@@ -733,7 +733,7 @@ El dashboard queda en `http://localhost:5000`.
 3. Clonar el repo, crear un archivo `.env` si hace falta y levantarlo:
 
 ```bash
-git clone https://github.com/TinchoLay/ssh-honeypot.git
+git clone https://github.com/MartinChanca/ssh-honeypot.git
 cd ssh-honeypot
 docker compose up -d --build
 ```
@@ -846,4 +846,4 @@ Este proyecto es para aprender ciberseguridad. El honeypot solo captura datos de
 
 Martín, soporte IT y ciberseguridad, camino a un puesto de SOC L1.
 
-[GitHub](https://github.com/TinchoLay) · [LinkedIn](https://www.linkedin.com/in/martin-chancalay-902b543a8)
+[GitHub](https://github.com/MartinChanca) · [LinkedIn](https://www.linkedin.com/in/martin-chancalay-902b543a8)

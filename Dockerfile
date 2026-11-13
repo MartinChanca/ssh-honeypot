@@ -4,7 +4,7 @@
 FROM python:3.11-slim
 
 # Metadatos del contenedor
-LABEL maintainer="TinchoLay"
+LABEL maintainer="MartinChanca"
 LABEL description="SSH Honeypot - Captura intentos de acceso no autorizados"
 LABEL version="1.0"
 
