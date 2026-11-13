@@ -424,7 +424,7 @@ This project exists to learn cybersecurity. The honeypot only captures data from
 
 Martín, IT support and cybersecurity, working toward a SOC L1 role.
 
-[GitHub](https://github.com/MartinChanca) · [LinkedIn](https://www.linkedin.com/in/martin-chancalay-902b543a8)
+[GitHub](https://github.com/MartinChanca) · [LinkedIn](https://www.linkedin.com/in/martin-chancalay)
 
 ---
 
@@ -846,4 +846,4 @@ Este proyecto es para aprender ciberseguridad. El honeypot solo captura datos de
 
 Martín, soporte IT y ciberseguridad, camino a un puesto de SOC L1.
 
-[GitHub](https://github.com/MartinChanca) · [LinkedIn](https://www.linkedin.com/in/martin-chancalay-902b543a8)
+[GitHub](https://github.com/MartinChanca) · [LinkedIn](https://www.linkedin.com/in/martin-chancalay)
