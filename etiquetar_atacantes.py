@@ -45,7 +45,13 @@ ORDEN = [
     "perfilado_sistema",     # mide CPU/RAM/SO (H-006)
     "fuerza_bruta_ssh",      # muchos logins, sin llegar a usar shell
     "sondeo_ssh_corto",      # conexiones SSH de menos de 1 s (H-004)
+    "sondeo_ci_jenkins",     # /crumbIssuer: busca Jenkins
+    "sondeo_paneles_login",  # /login, VPN/firewalls, GeoServer: busca paneles de administracion
+    "login_pocos_intentos",  # 1 a 9 logins SSH sin shell: rociado lento de credenciales
     "otro_con_shell",        # uso shell pero no encaja en ninguna firma
+    "protocolo_raro",        # HTTP con basura o un protocolo que no es HTTP
+    "recon_web_generico",    # solo pide /, favicon, robots.txt: mira que hay
+    "escaneo_solo_conexion", # solo se conecta por SSH (banner, puerto abierto), sin probar logins
     "sin_clasificar",
 ]
 
@@ -59,9 +65,13 @@ FIRMAS_CMD = {
 FIRMAS_HTTP = {
     "mcp_buscador": R(r"^/(api/)?(mcp|sse)(/|$|\?)"),
     "api_ia_llmjacking": R(r"^/(api/)?(v1|v1beta)/models\b|^/api/tags\b|^/v1/(chat|completions)"),
+    "sondeo_ci_jenkins": R(r"^/(crumbIssuer|script|jenkins)\b"),
+    "sondeo_paneles_login": R(r"^/(login|remote/login|\+CSCOE\+|geoserver|admin|manager|dana-na|global-protect|owa)\b"),
+    "recon_web_generico": R(r"^/(index\.(html?|php)|favicon\.ico|robots\.txt)?$"),
     "exploit_iot": R(r"setup\.cgi|boaform|/GponForm|/cgi-bin/(luci|\.%2e)|/HNAP1|/shell\?cmd="),
 }
 
+RE_HOST_PUERTO = re.compile(r"^\[?[\w.\-]+\]?:\d{1,5}$")   # objetivo de un CONNECT: host:puerto
 UMBRAL_FUERZA_BRUTA = 10     # logins distintos
 UMBRAL_CORTAS = 3            # conexiones de menos de 1 s
 
@@ -131,7 +141,11 @@ def etiquetar_ip(eventos):
         elif tipo == "http_request":
             f["http"] += 1
             ruta, metodo = _ruta_http(e), str(e.get("method", "")).upper()
-            if metodo == "CONNECT" or re.match(r"(?i)^https?://", ruta):
+            if re.search(r"[\x00-\x08\x0a-\x1f]", ruta):
+                et.add("protocolo_raro")
+                f["http_protocolo_raro"] += 1
+                continue
+            if metodo == "CONNECT" or re.match(r"(?i)^https?://", ruta) or RE_HOST_PUERTO.match(ruta):
                 et.add("proxy_abierto")
                 f["http_proxy"] += 1
             for nombre, rx in FIRMAS_HTTP.items():
@@ -155,6 +169,10 @@ def etiquetar_ip(eventos):
         et.add("sondeo_ssh_corto")
     if f["comandos"] and not et:
         et.add("otro_con_shell")
+    if not et and 0 < f["logins_distintos"] < UMBRAL_FUERZA_BRUTA:
+        et.add("login_pocos_intentos")
+    if not et and f["conexiones"] and not f["http"]:
+        et.add("escaneo_solo_conexion")
     if not et:
         et.add("sin_clasificar")
     return et, f
