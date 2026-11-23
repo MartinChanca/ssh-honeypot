@@ -45,7 +45,8 @@ ORDEN = [
     "perfilado_sistema",     # mide CPU/RAM/SO (H-006)
     "fuerza_bruta_ssh",      # muchos logins, sin llegar a usar shell
     "sondeo_ssh_corto",      # conexiones SSH de menos de 1 s (H-004)
-    "sondeo_ci_jenkins",     # /crumbIssuer: busca Jenkins
+    "sondeo_ci_jenkins",     # /crumbIssuer, /hudson, /api/json: busca Jenkins
+    "busca_config_expuesta", # /.env, /actuator, phpinfo, wp-json: busca secretos y configuracion
     "sondeo_paneles_login",  # /login, VPN/firewalls, GeoServer: busca paneles de administracion
     "login_pocos_intentos",  # 1 a 9 logins SSH sin shell: rociado lento de credenciales
     "otro_con_shell",        # uso shell pero no encaja en ninguna firma
@@ -65,10 +66,11 @@ FIRMAS_CMD = {
 FIRMAS_HTTP = {
     "mcp_buscador": R(r"^/(api/)?(mcp|sse)(/|$|\?)"),
     "api_ia_llmjacking": R(r"^/(api/)?(v1|v1beta)/models\b|^/api/tags\b|^/v1/(chat|completions)"),
-    "sondeo_ci_jenkins": R(r"^/(crumbIssuer|script|jenkins)\b"),
+    "sondeo_ci_jenkins": R(r"^/(crumbIssuer|script|jenkins|hudson|api/json)\b"),
     "sondeo_paneles_login": R(r"^/(login|remote/login|\+CSCOE\+|geoserver|admin|manager|dana-na|global-protect|owa)\b"),
+    "busca_config_expuesta": R(r"^/(\.env[\w.\-]*|\.git/|actuator\b|info\.php|phpinfo\.php|wp-json|wp-config|server-status|.*GetPhpInfo\.php)"),
     "recon_web_generico": R(r"^/(index\.(html?|php)|favicon\.ico|robots\.txt)?$"),
-    "exploit_iot": R(r"setup\.cgi|boaform|/GponForm|/cgi-bin/(luci|\.%2e)|/HNAP1|/shell\?cmd="),
+    "exploit_iot": R(r"setup\.cgi|boaform|/GponForm|/cgi-bin/(luci|\.%2e)|/HNAP1|/shell\?cmd=|/cgi-bin/cstecgi\.cgi"),
 }
 
 RE_HOST_PUERTO = re.compile(r"^\[?[\w.\-]+\]?:\d{1,5}$")   # objetivo de un CONNECT: host:puerto
