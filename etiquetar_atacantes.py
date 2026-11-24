@@ -40,7 +40,11 @@ ORDEN = [
     "exploit_iot",           # exploits de routers y camaras (Mirai y familia)
     "mcp_buscador",          # busca servidores MCP/SSE abiertos
     "api_ia_llmjacking",     # busca APIs de modelos de IA abiertas
-    "proxy_abierto",         # URL absoluta o CONNECT: busca un proxy abierto
+    "proxy_abierto_canario", # proxy abierto con destinos de control del operador (dominios raros, IPs sueltas)
+    "proxy_abierto_eco_ip",  # proxy abierto que pide su IP de vuelta (ipify, httpbin...)
+    "proxy_abierto",         # URL absoluta o CONNECT a otros destinos: busca un proxy abierto
+    "sondeo_c2_checksum8",   # rutas de 4 caracteres tipo /aab9: caza de servidores Cobalt Strike/Metasploit
+    "sondeo_weblogic_t3",    # saludo del protocolo T3 de WebLogic (como el script weblogic-t3-info de Nmap)
     "anti_honeypot",         # verifica si la shell es real (H-003)
     "perfilado_sistema",     # mide CPU/RAM/SO (H-006)
     "fuerza_bruta_ssh",      # muchos logins, sin llegar a usar shell
@@ -48,6 +52,7 @@ ORDEN = [
     "sondeo_ci_jenkins",     # /crumbIssuer, /hudson, /api/json: busca Jenkins
     "busca_config_expuesta", # /.env, /actuator, phpinfo, wp-json: busca secretos y configuracion
     "sondeo_paneles_login",  # /login, VPN/firewalls, GeoServer: busca paneles de administracion
+    "sondeo_spotify_zeroconf", # /zc?action=getInfo: descubre dispositivos con Spotify Connect
     "login_pocos_intentos",  # 1 a 9 logins SSH sin shell: rociado lento de credenciales
     "otro_con_shell",        # uso shell pero no encaja en ninguna firma
     "protocolo_raro",        # HTTP con basura o un protocolo que no es HTTP
@@ -69,10 +74,22 @@ FIRMAS_HTTP = {
     "sondeo_ci_jenkins": R(r"^/(crumbIssuer|script|jenkins|hudson|api/json)\b"),
     "sondeo_paneles_login": R(r"^/(login|remote/login|\+CSCOE\+|geoserver|admin|manager|dana-na|global-protect|owa)\b"),
     "busca_config_expuesta": R(r"^/(\.env[\w.\-]*|\.git/|actuator\b|info\.php|phpinfo\.php|wp-json|wp-config|server-status|.*GetPhpInfo\.php)"),
+    "sondeo_spotify_zeroconf": R(r"^/zc\?action=(getInfo|addUser)\b"),
     "recon_web_generico": R(r"^/(index\.(html?|php)|favicon\.ico|robots\.txt)?$"),
     "exploit_iot": R(r"setup\.cgi|boaform|/GponForm|/cgi-bin/(luci|\.%2e)|/HNAP1|/shell\?cmd=|/cgi-bin/cstecgi\.cgi"),
 }
 
+# Saludo T3 de WebLogic: "t3 12.1.2\nAS:2048\nHL:19\n\n". El honeypot a veces se come el "t3 " (lo toma de metodo HTTP).
+RE_T3 = re.compile(r"^(t3\s+)?\d+\.\d+\.\d+\s*\n\s*AS:\d+\s*\n\s*HL:\d+", re.I)
+# Rutas de 4 caracteres alfanumericos cuya suma ASCII mod 256 es 92 o 93 (checksum8 de los stagers de Cobalt Strike y Metasploit)
+RE_RUTA_4 = re.compile(r"^/([A-Za-z0-9]{4})/?$")
+CHECKSUM8_VALORES = (92, 93)
+# Destinos que los verificadores de proxy usan para que el proxy "devuelva" una IP o los headers (listas editables)
+ECO_IP_HOSTS = {"api.ipify.org", "api64.ipify.org", "ipify.org", "httpbin.org", "api.myip.la",
+                "ifconfig.me", "icanhazip.com", "checkip.amazonaws.com", "ipinfo.io"}
+# Dominios raros vistos como destino de proxy y que ninguna fuente publica documenta: se agrupan por observacion, no por reputacion
+CANARIO_DOMINIOS = ("bunnyfeet.baby", "tooyoungtoholdon.world", "youshouldvecomeover.lol", "overflow.biz")
+RE_IP_SUELTA = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 RE_HOST_PUERTO = re.compile(r"^\[?[\w.\-]+\]?:\d{1,5}$")   # objetivo de un CONNECT: host:puerto
 UMBRAL_FUERZA_BRUTA = 10     # logins distintos
 UMBRAL_CORTAS = 3            # conexiones de menos de 1 s
@@ -119,6 +136,17 @@ def cargar(carpeta, desde=None):
     return por_ip
 
 
+def es_checksum8(ruta):
+    m = RE_RUTA_4.match(ruta)
+    return bool(m) and sum(ord(c) for c in m.group(1)) % 256 in CHECKSUM8_VALORES
+
+
+def host_destino(ruta):
+    """Host al que un pedido de proxy quiere llegar (URL absoluta o host:puerto); '' si no es de proxy."""
+    m = re.match(r"(?i)^https?://\[?([^/:?#\]]+)", ruta) or re.match(r"^\[?([\w.\-]+)\]?:\d{1,5}$", ruta)
+    return m.group(1).lower() if m else ""
+
+
 def _ruta_http(e):
     return str(e.get("path") or e.get("url") or e.get("uri") or "")
 
@@ -143,13 +171,26 @@ def etiquetar_ip(eventos):
         elif tipo == "http_request":
             f["http"] += 1
             ruta, metodo = _ruta_http(e), str(e.get("method", "")).upper()
+            if RE_T3.match(ruta) or metodo == "T3":
+                et.add("sondeo_weblogic_t3")
+                f["http_t3"] += 1
+                continue
             if re.search(r"[\x00-\x08\x0a-\x1f]", ruta):
                 et.add("protocolo_raro")
                 f["http_protocolo_raro"] += 1
                 continue
             if metodo == "CONNECT" or re.match(r"(?i)^https?://", ruta) or RE_HOST_PUERTO.match(ruta):
-                et.add("proxy_abierto")
                 f["http_proxy"] += 1
+                host = host_destino(ruta)
+                if host.endswith(CANARIO_DOMINIOS) or RE_IP_SUELTA.match(host):
+                    et.add("proxy_abierto_canario")
+                elif host in ECO_IP_HOSTS:
+                    et.add("proxy_abierto_eco_ip")
+                else:
+                    et.add("proxy_abierto")
+            if es_checksum8(ruta):
+                et.add("sondeo_c2_checksum8")
+                f["http_c2_checksum8"] += 1
             for nombre, rx in FIRMAS_HTTP.items():
                 if rx.search(ruta):
                     et.add(nombre)
