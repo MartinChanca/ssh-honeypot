@@ -35,6 +35,7 @@ ARCHIVOS = {
 
 # Orden = prioridad de la etiqueta principal (la primera que tenga la IP).
 ORDEN = [
+    "escaner_investigacion", # IP de un escaner de investigacion conocido (ej. Shadowserver): trafico documentado, no un ataque
     "instalador",            # pide instalar/descargar herramientas o ejecutar un script remoto
     "credenciales_cloud",    # busca credenciales cloud / IMDS
     "exploit_iot",           # exploits de routers y camaras (Mirai y familia)
@@ -84,6 +85,13 @@ RE_T3 = re.compile(r"^(t3\s+)?\d+\.\d+\.\d+\s*\n\s*AS:\d+\s*\n\s*HL:\d+", re.I)
 # Rutas de 4 caracteres alfanumericos cuya suma ASCII mod 256 es 92 o 93 (checksum8 de los stagers de Cobalt Strike y Metasploit)
 RE_RUTA_4 = re.compile(r"^/([A-Za-z0-9]{4})/?$")
 CHECKSUM8_VALORES = (92, 93)
+# Escaneres de investigacion: se reconocen por el DUENO de la IP (campo "isp" que el honeypot ya guarda en cada pedido
+# HTTP), no por lo que piden. Que el trafico venga de una IP suya es solido (hay handshake TCP, no se puede falsificar
+# el origen); que el pedido sea "bueno" no: ellos dicen que publican reportes a los duenos de redes. Lista editable:
+# se agrega aca solo lo que se vio en el honeypot. Visto el 25/11: "The Shadowserver Foundation, Inc." (199.165.159.x).
+ISP_INVESTIGACION = re.compile(r"shadowserver", re.I)
+# Algunos verificadores de proxy se identifican en el User-Agent (visto el 26/11: "proxy-prefilter/1", 204.76.x.x)
+RE_UA_VERIFICADOR_PROXY = re.compile(r"proxy[-_ ]?prefilter", re.I)
 # Destinos que los verificadores de proxy usan para que el proxy "devuelva" una IP o los headers (listas editables)
 ECO_IP_HOSTS = {"api.ipify.org", "api64.ipify.org", "ipify.org", "httpbin.org", "api.myip.la",
                 "ifconfig.me", "icanhazip.com", "checkip.amazonaws.com", "ipinfo.io"}
@@ -171,6 +179,11 @@ def etiquetar_ip(eventos):
         elif tipo == "http_request":
             f["http"] += 1
             ruta, metodo = _ruta_http(e), str(e.get("method", "")).upper()
+            if ISP_INVESTIGACION.search(str(e.get("isp", ""))):
+                et.add("escaner_investigacion")
+                f["http_isp_investigacion"] += 1
+            if RE_UA_VERIFICADOR_PROXY.search(str(e.get("user_agent", ""))):
+                f["http_ua_verificador_proxy"] += 1
             if RE_T3.match(ruta) or metodo == "T3":
                 et.add("sondeo_weblogic_t3")
                 f["http_t3"] += 1
@@ -205,6 +218,10 @@ def etiquetar_ip(eventos):
                     f["conexiones_cortas"] += 1
             except (TypeError, ValueError):
                 pass
+    # Un verificador de proxy que se identifica por UA cuenta como proxy abierto aunque el pedido venga raro
+    if f["http_ua_verificador_proxy"] and not et & {"proxy_abierto", "proxy_abierto_eco_ip", "proxy_abierto_canario"}:
+        et.add("proxy_abierto")
+        et.discard("protocolo_raro")
     f["logins_distintos"] = len(logins)
     if f["logins_distintos"] >= UMBRAL_FUERZA_BRUTA and not f["comandos"]:
         et.add("fuerza_bruta_ssh")
