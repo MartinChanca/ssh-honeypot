@@ -19,6 +19,7 @@ tiene firma, la IP sale como "sin_clasificar" y eso es informacion util, no un e
 """
 import argparse
 import csv
+import ipaddress
 import json
 import os
 import re
@@ -35,7 +36,7 @@ ARCHIVOS = {
 
 # Orden = prioridad de la etiqueta principal (la primera que tenga la IP).
 ORDEN = [
-    "escaner_investigacion", # IP de un escaner de investigacion conocido (ej. Shadowserver): trafico documentado, no un ataque
+    "escaner_investigacion", # IP de un escaner de investigacion conocido (Shadowserver, Palo Alto Xpanse): trafico documentado, no un ataque
     "instalador",            # pide instalar/descargar herramientas o ejecutar un script remoto
     "credenciales_cloud",    # busca credenciales cloud / IMDS
     "exploit_iot",           # exploits de routers y camaras (Mirai y familia)
@@ -97,8 +98,16 @@ CHECKSUM8_VALORES = (92, 93)
 # el origen); que el pedido sea "bueno" no: ellos dicen que publican reportes a los duenos de redes. Lista editable:
 # se agrega aca solo lo que se vio en el honeypot. Visto el 25/11: "The Shadowserver Foundation, Inc." (199.165.159.x).
 ISP_INVESTIGACION = re.compile(r"shadowserver", re.I)
-# Otros escaneres de investigacion se identifican solos en el User-Agent (visto el 27/11: "Hello from Palo Alto Networks,
-# find out more about our scans in ..."). Es lo que ellos dicen de si mismos: no verifique su pagina.
+# Palo Alto Networks (Cortex Xpanse) publica los rangos desde los que escanea (cortex-docs.paloaltonetworks.com, pagina
+# "Scanning activity", leida el 27/11). Que la IP este en uno de esos rangos es la senal fuerte (se aplica a cualquier tipo
+# de evento, tambien SSH); lo que ellos dicen de su proposito (mapear la superficie de ataque de sus clientes, "CFAA-compliant")
+# es declaracion suya, no verificada. Lista editable: se copia de su pagina, no se inventa.
+REDES_INVESTIGACION = [ipaddress.ip_network(x) for x in (
+    "35.203.210.0/23", "144.86.173.0/24", "147.185.132.0/23", "162.216.149.0/24", "162.216.150.0/24",
+    "172.105.147.0/24", "198.235.24.0/24", "205.210.31.0/24", "216.25.88.0/21",
+    "2604:a940:300:5b6::/64", "2604:a940:301:225::/64", "2604:a940:302:118::/64")]
+# Ademas se identifican en el User-Agent (visto el 27/11: "Hello from Palo Alto Networks, find out more about our scans in
+# ..."). El UA lo controla quien manda el pedido: es senal debil por si sola.
 RE_UA_INVESTIGACION = re.compile(r"palo alto networks", re.I)
 # Solicitud de conexion RDP (X.224 con cookie "mstshash=") mandada al puerto web: no es HTTP
 RE_RDP = re.compile(r"mstshash=|^\x03\x00", re.I)
@@ -167,6 +176,14 @@ def host_destino(ruta):
     return m.group(1).lower() if m else ""
 
 
+def en_rango_investigacion(ip):
+    try:
+        a = ipaddress.ip_address(str(ip))
+    except ValueError:
+        return False
+    return any(a in r for r in REDES_INVESTIGACION if r.version == a.version)
+
+
 def _ruta_http(e):
     return str(e.get("path") or e.get("url") or e.get("uri") or "")
 
@@ -177,6 +194,9 @@ def etiquetar_ip(eventos):
     logins = set()
     for e in eventos:
         tipo = e.get("honeypot_event")
+        if en_rango_investigacion(e.get("ip") or e.get("src_ip") or e.get("client_ip")):
+            et.add("escaner_investigacion")
+            f["ip_rango_investigacion"] += 1
         if tipo == "shell_command":
             f["comandos"] += 1
             cmd = str(e.get("command", ""))
