@@ -41,16 +41,20 @@ ORDEN = [
     "exploit_iot",           # exploits de routers y camaras (Mirai y familia)
     "mcp_buscador",          # busca servidores MCP/SSE abiertos
     "api_ia_llmjacking",     # busca APIs de modelos de IA abiertas
+    "sondeo_open_webui",     # /api/v1/auths/...: intenta registrarse o entrar en una interfaz Open WebUI
     "proxy_abierto_canario", # proxy abierto con destinos de control del operador (dominios raros, IPs sueltas)
     "proxy_abierto_eco_ip",  # proxy abierto que pide su IP de vuelta (ipify, httpbin...)
     "proxy_abierto",         # URL absoluta o CONNECT a otros destinos: busca un proxy abierto
     "sondeo_c2_checksum8",   # rutas de 4 caracteres tipo /aab9: caza de servidores Cobalt Strike/Metasploit
     "sondeo_weblogic_t3",    # saludo del protocolo T3 de WebLogic (como el script weblogic-t3-info de Nmap)
+    "sondeo_rdp",            # solicitud de conexion RDP (cookie mstshash) mandada al puerto web
     "anti_honeypot",         # verifica si la shell es real (H-003)
     "perfilado_sistema",     # mide CPU/RAM/SO (H-006)
     "fuerza_bruta_ssh",      # muchos logins, sin llegar a usar shell
     "sondeo_ssh_corto",      # conexiones SSH de menos de 1 s (H-004)
     "sondeo_ci_jenkins",     # /crumbIssuer, /hudson, /api/json: busca Jenkins
+    "sondeo_trino_presto",   # POST /v1/statement: API de consultas SQL de Trino/Presto
+    "sondeo_citrix_netscaler", # /vpn/js/rdx, /vpn/pluginlist.xml, /logon/LogonPoint/: huella o login de Citrix NetScaler/Gateway
     "busca_config_expuesta", # /.env, /actuator, phpinfo, wp-json: busca secretos y configuracion
     "sondeo_paneles_login",  # /login, VPN/firewalls, GeoServer: busca paneles de administracion
     "sondeo_spotify_zeroconf", # /zc?action=getInfo: descubre dispositivos con Spotify Connect
@@ -71,13 +75,16 @@ FIRMAS_CMD = {
 }
 FIRMAS_HTTP = {
     "mcp_buscador": R(r"^/(api/)?(mcp|sse)(/|$|\?)"),
+    "sondeo_open_webui": R(r"^/api/v1/auths/"),
+    "sondeo_trino_presto": R(r"^/v1/statement\b"),
+    "sondeo_citrix_netscaler": R(r"^/(vpn/(js/rdx/|pluginlist\.xml)|logon/LogonPoint/)"),
     "api_ia_llmjacking": R(r"^/(api/)?(v1|v1beta)/models\b|^/api/tags\b|^/v1/(chat|completions)"),
     "sondeo_ci_jenkins": R(r"^/(crumbIssuer|script|jenkins|hudson|api/json)\b"),
     "sondeo_paneles_login": R(r"^/(login|remote/login|\+CSCOE\+|geoserver|admin|manager|dana-na|global-protect|owa)\b"),
-    "busca_config_expuesta": R(r"^/(\.env[\w.\-]*|\.git/|actuator\b|info\.php|phpinfo\.php|wp-json|wp-config|server-status|.*GetPhpInfo\.php)"),
+    "busca_config_expuesta": R(r"^/(\.env[\w.\-]*|\.git/|actuator\b|info\.php|phpinfo\.php|wp-json|wp-config|server-status|.*GetPhpInfo\.php|@vite/|api/(env|environment|secrets|config/env|system/environment)\b)"),
     "sondeo_spotify_zeroconf": R(r"^/zc\?action=(getInfo|addUser)\b"),
     "recon_web_generico": R(r"^/(index\.(html?|php)|favicon\.ico|robots\.txt)?$"),
-    "exploit_iot": R(r"setup\.cgi|boaform|/GponForm|/cgi-bin/(luci|\.%2e)|/HNAP1|/shell\?cmd=|/cgi-bin/cstecgi\.cgi"),
+    "exploit_iot": R(r"setup\.cgi|boaform|/GponForm|/cgi-bin/(luci|\.%2e)|/HNAP1|/shell\?cmd=|/cgi-bin/cstecgi\.cgi|/board\.cgi|/tmUnblock\.cgi|[?&](cmd|command|exec|shell)=[^&\s]*(wget|curl|tftp|ftpget|busybox)\b"),
 }
 
 # Saludo T3 de WebLogic: "t3 12.1.2\nAS:2048\nHL:19\n\n". El honeypot a veces se come el "t3 " (lo toma de metodo HTTP).
@@ -90,6 +97,11 @@ CHECKSUM8_VALORES = (92, 93)
 # el origen); que el pedido sea "bueno" no: ellos dicen que publican reportes a los duenos de redes. Lista editable:
 # se agrega aca solo lo que se vio en el honeypot. Visto el 25/11: "The Shadowserver Foundation, Inc." (199.165.159.x).
 ISP_INVESTIGACION = re.compile(r"shadowserver", re.I)
+# Otros escaneres de investigacion se identifican solos en el User-Agent (visto el 27/11: "Hello from Palo Alto Networks,
+# find out more about our scans in ..."). Es lo que ellos dicen de si mismos: no verifique su pagina.
+RE_UA_INVESTIGACION = re.compile(r"palo alto networks", re.I)
+# Solicitud de conexion RDP (X.224 con cookie "mstshash=") mandada al puerto web: no es HTTP
+RE_RDP = re.compile(r"mstshash=|^\x03\x00", re.I)
 # Algunos verificadores de proxy se identifican en el User-Agent (visto el 26/11: "proxy-prefilter/1", 204.76.x.x)
 RE_UA_VERIFICADOR_PROXY = re.compile(r"proxy[-_ ]?prefilter", re.I)
 # Destinos que los verificadores de proxy usan para que el proxy "devuelva" una IP o los headers (listas editables)
@@ -182,8 +194,15 @@ def etiquetar_ip(eventos):
             if ISP_INVESTIGACION.search(str(e.get("isp", ""))):
                 et.add("escaner_investigacion")
                 f["http_isp_investigacion"] += 1
+            if RE_UA_INVESTIGACION.search(str(e.get("user_agent", ""))):
+                et.add("escaner_investigacion")
+                f["http_ua_investigacion"] += 1
             if RE_UA_VERIFICADOR_PROXY.search(str(e.get("user_agent", ""))):
                 f["http_ua_verificador_proxy"] += 1
+            if RE_RDP.search(str(e.get("method", "")) + ruta):
+                et.add("sondeo_rdp")
+                f["http_rdp"] += 1
+                continue
             if RE_T3.match(ruta) or metodo == "T3":
                 et.add("sondeo_weblogic_t3")
                 f["http_t3"] += 1
